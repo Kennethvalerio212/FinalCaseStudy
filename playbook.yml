@@ -1,0 +1,117 @@
+---
+- name: Router 1
+  hosts: R1
+  gather_facts: false
+  connection: local
+
+  vars:
+    cli:
+      username: cisco
+      password: cisco
+
+  tasks:
+  #1st Topic
+    - name: Enable OSPF
+      ios_config:
+        provider: "{{ cli }}"
+        authorize: yes
+        parents: router ospf 1
+        lines:
+          - network 192.168.4.0 0.0.0.255 area 0
+          - network 192.168.3.0 0.0.0.255 area 0
+          - network 192.168.20.0 0.0.0.255 area 0
+      register: new
+
+    - debug: var=new
+    #2nd Topic
+    - name: Static Route R1 to R2
+      ios_config:
+        provider: "{{ cli }}"
+        authorize: yes
+        lines:
+          - ip route 192.168.2.0 255.255.255.0 10.0.0.2
+          - ip route 192.168.5.0 255.255.255.0 10.0.0.2
+      register: new
+
+    - debug: var=new
+
+    - name: ACL (before)
+      ios_command:
+        provider: "{{ cli }}"
+        authorize: yes
+        commands:
+          - show run
+      register: result_before
+    #3rd Topic
+    - name: ACL
+      ios_config:
+        provider: "{{ cli }}"
+        authorize: yes
+        lines:
+          - permit ip host 192.168.4.2 any
+          - permit ip host 192.168.5.2 any
+          - permit ip host 192.168.3.2 any
+          - permit ip host 192.168.2.2 any
+        parents: ip access-list extended test
+        save_when: modified
+    
+    #4th Topic
+    - name: TUNNELING
+      ios_config:
+        provider: "{{ cli }}"
+        authorize: yes
+        lines:
+          - ip address 172.16.1.1 255.255.0.0
+          - tunnel source f1/0
+          - tunnel destination 192.168.5.1
+        parents: interface tunnel 1
+
+    
+    - name: DISPLAYING THE RUNNING-CONFIG
+      ios_command:
+        provider: "{{ cli }}"
+        authorize: yes
+        commands:
+          - show running-config
+      register: R1Config
+    #SAVE
+    - name: SAVE OUTPUT
+      copy:
+        content: "{{ R1Config.stdout[0] }}"
+        dest: "R1Config{{ inventory_hostname }}.txt"
+    #TESTS
+    - name: Test Ping NetworkAutomation
+      ios_ping:
+        provider: "{{ cli }}"
+        authorize: yes
+        dest: 192.168.4.2
+
+    #TESTS
+    - name: Test Ping R2
+      ios_ping:
+        provider: "{{ cli }}"
+        authorize: yes
+        dest: 10.0.0.2
+    #TESTS
+    - name: Test Ping PC3
+      ios_ping:
+        provider: "{{ cli }}"
+        authorize: yes
+        dest: 192.168.2.1
+    
+     #TESTS
+    - name: Test Ping PC2
+      ios_ping:
+        provider: "{{ cli }}"
+        authorize: yes
+        dest: 192.168.5.1
+    #TESTS
+    - name: Test Ping PC1
+      ios_ping:
+        provider: "{{ cli }}"
+        authorize: yes
+        dest: 192.168.3.1
+  
+      register: print_output
+
+    - debug: var=print_output
